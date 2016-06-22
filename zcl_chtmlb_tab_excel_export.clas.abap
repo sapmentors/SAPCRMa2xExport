@@ -19,9 +19,19 @@ protected section.
   data IO_WORKSHEET type ref to ZCL_EXCEL_WORKSHEET .
   data IS_TREE type ABAP_BOOL .
   data TAB_SIZE type I .
+  data IO_STYLE_1 type ref to ZCL_EXCEL_STYLE .  
+  data IO_STYLE_2 type ref to ZCL_EXCEL_STYLE .
+  data IO_STYLE_3 type ref to ZCL_EXCEL_STYLE .
 
   methods FILL_TABLE_CONTENT .
   methods FILL_TABLE_HEADER .
+  methods GET_CELL_STYLE
+    importing
+      !IV_COLUMN type I optional
+      !IV_ROW type I optional
+    returning
+      value(RV_STYLE) type ZEXCEL_CELL_STYLE .
+  methods SET_WORKSHEET_OPTIONS .
 private section.
 *"* private components of class ZCL_CHTMLB_TAB_EXCEL_EXPORT
 *"* do not include other source files here!!!
@@ -152,6 +162,9 @@ METHOD fill_table_content.
     column = 1.
     index = sy-index.
 
+    " Get style
+    DATA(lv_style) = get_cell_style( iv_row = row iv_column = column ).
+
     LOOP AT me->config_table ASSIGNING <config_line>.
       field_index = sy-tabix.
       abap_type  = <config_line>-mandatory.
@@ -278,6 +291,7 @@ METHOD fill_table_content.
             ip_row       =   row         " Cell Row
             ip_value     =   tree_indent " Cell Value
             ip_data_type =   's'         " Excel type
+            ip_style     = lv_style
         ).
         column = column + 1.
       ENDIF.
@@ -292,28 +306,31 @@ METHOD fill_table_content.
       IF length < strlen( cell_value ).
         io_worksheet->set_cell(
           EXPORTING
-            ip_column    =   column_str  " Cell Column
-            ip_row       =   row         " Cell Row
-            ip_value     =   cell_value  " Cell Value
-            ip_data_type =   's'         " Excel type
+            ip_column    = column_str  " Cell Column
+            ip_row       = row         " Cell Row
+            ip_value     = cell_value  " Cell Value
+            ip_data_type = 's'         " Excel type
+            ip_style     = lv_style
         ).
       ELSE.
         TRY.
             <cell_value> = cell_value.
             io_worksheet->set_cell(
               EXPORTING
-                ip_column    =   column_str   " Cell Column
-                ip_row       =   row          " Cell Row
-                ip_value     =   <cell_value> " Cell Value
-                ip_abap_type =   abap_type    " ABAP cell data type
+                ip_column    = column_str   " Cell Column
+                ip_row       = row          " Cell Row
+                ip_value     = <cell_value> " Cell Value
+                ip_abap_type = abap_type    " ABAP cell data type
+                ip_style     = lv_style
             ).
           CATCH cx_sy_conversion_no_number INTO ex.
             io_worksheet->set_cell(
               EXPORTING
-                ip_column    =   column_str  " Cell Column
-                ip_row       =   row         " Cell Row
-                ip_value     =   cell_value  " Cell Value
-                ip_data_type =   's'         " Excel type
+                ip_column    = column_str  " Cell Column
+                ip_row       = row         " Cell Row
+                ip_value     = cell_value  " Cell Value
+                ip_data_type = 's'         " Excel type
+                ip_style     = lv_style
             ).
         ENDTRY.
       ENDIF.
@@ -332,7 +349,8 @@ method FILL_TABLE_HEADER.
         tmp_string          TYPE string,                    "#EC NEEDED
         column_dimension    TYPE REF TO zcl_excel_worksheet_columndime,
         column_str          TYPE zexcel_cell_column_alpha,
-        column              TYPE zexcel_cell_column VALUE 1.
+        column              TYPE zexcel_cell_column VALUE 1,
+        lv_style_header     TYPE zexcel_cell_style.
 
   FIELD-SYMBOLS: <config_line> LIKE LINE OF me->config_table.
   " Creates active sheet
@@ -341,6 +359,9 @@ method FILL_TABLE_HEADER.
   " Get active sheet
   io_worksheet = io_excel->get_active_worksheet( ).
   io_worksheet->set_title( ip_title = 'CRM Table Export'(001) ).
+
+  " Get header style
+  lv_style_header = get_cell_style( iv_row = 1 ).
 
   " Is the table a tree?
   TRY.
@@ -391,9 +412,10 @@ method FILL_TABLE_HEADER.
     column_str = zcl_excel_common=>convert_column2alpha( column ).
     io_worksheet->set_cell(
       EXPORTING
-        ip_column    =   column_str  " Cell Column
-        ip_row       =   1  " Cell Row
-        ip_value     =   comp-column_title  " Cell Value
+        ip_column    = column_str  " Cell Column
+        ip_row       = 1  " Cell Row
+        ip_value     = comp-column_title  " Cell Value
+        ip_style     = lv_style_header
     ).
     " Autosize Columns
     column_dimension = io_worksheet->get_column_dimension( ip_column = column_str ).
@@ -402,6 +424,64 @@ method FILL_TABLE_HEADER.
     column = column + 1.
   ENDLOOP.
 endmethod.
+
+
+METHOD get_cell_style.
+
+  DATA lr_border_dark          TYPE REF TO zcl_excel_style_border.
+  DATA lr_border_blue          TYPE REF TO zcl_excel_style_border.
+  DATA lv_mod                  TYPE i.
+
+  IF iv_row = 1.
+    FREE: io_style_1, io_style_2, io_style_3.
+
+    " Header line
+    io_style_1                       = io_excel->add_new_style( ).
+    io_style_1->fill->filltype       = zcl_excel_style_fill=>c_fill_solid.
+    io_style_1->fill->fgcolor-theme  = zcl_excel_style_color=>c_theme_accent1.
+    io_style_1->font->bold           = abap_true.
+    io_style_1->font->color-rgb      = zcl_excel_style_color=>c_white.
+
+    CREATE OBJECT lr_border_dark.
+    lr_border_dark->border_color-rgb = zcl_excel_style_color=>c_black.
+    lr_border_dark->border_style     = zcl_excel_style_border=>c_border_thin.
+    io_style_1->borders->allborders  = lr_border_dark.
+
+    rv_style = io_style_1->get_guid( ).
+
+  ELSE.
+    lv_mod = iv_row MOD 2.
+    IF lv_mod = 0.
+      " Table line: Pair
+      IF io_style_2 IS INITIAL.
+        io_style_2                         = io_excel->add_new_style( ).
+        io_style_2->fill->filltype         = zcl_excel_style_fill=>c_fill_solid.
+        io_style_2->fill->fgcolor-theme    = zcl_excel_style_color=>c_theme_accent1.
+        io_style_2->fill->fgcolor-tint     = '0.79998168889431442'.
+        io_style_2->fill->bgcolor-indexed  = zcl_excel_style_color=>c_indexed_sys_foreground.
+
+        CREATE OBJECT lr_border_blue.
+        lr_border_blue->border_color-theme = zcl_excel_style_color=>c_theme_accent1.
+        lr_border_blue->border_style       = zcl_excel_style_border=>c_border_thin.
+        io_style_2->borders->allborders    = lr_border_blue.
+      ENDIF.
+      rv_style = io_style_2->get_guid( ).
+
+    ELSE.
+      " Table line: Impair
+      IF io_style_3 IS INITIAL.
+        io_style_3                         = io_excel->add_new_style( ).
+
+        CREATE OBJECT lr_border_blue.
+        lr_border_blue->border_color-theme = zcl_excel_style_color=>c_theme_accent1.
+        lr_border_blue->border_style       = zcl_excel_style_border=>c_border_thin.
+        io_style_3->borders->allborders    = lr_border_blue.
+      ENDIF.
+      rv_style = io_style_3->get_guid( ).
+    ENDIF.
+  ENDIF.
+
+ENDMETHOD.
 
 
 method IF_HTTP_EXTENSION~HANDLE_REQUEST.
@@ -443,8 +523,8 @@ method IF_HTTP_EXTENSION~HANDLE_REQUEST.
       DELETE me->config_table WHERE name = 'THTMLB_OCA'.
 
       me->fill_table_header( ).
-
       me->fill_table_content( ).
+      me->set_worksheet_options( ).
 
       CREATE OBJECT lo_excel_writer TYPE zcl_excel_writer_2007.
       file = lo_excel_writer->write_file( io_excel ).
@@ -466,4 +546,29 @@ method IF_HTTP_EXTENSION~HANDLE_REQUEST.
     WHEN OTHERS.
   ENDCASE.
 endmethod.
+
+
+METHOD set_worksheet_options.
+
+  DATA lr_autofilter           TYPE REF TO zcl_excel_autofilter.
+  DATA ls_area                 TYPE zexcel_s_autofilter_area.
+
+  TRY.
+      io_worksheet->freeze_panes(
+        EXPORTING
+          ip_num_rows    = 1 ).
+
+      ls_area-row_start = 1.
+      ls_area-col_start = 1.
+      ls_area-row_end   = io_worksheet->get_highest_row( ).
+      ls_area-col_end   = io_worksheet->get_highest_column( ).
+
+      lr_autofilter = io_excel->add_new_autofilter( io_sheet = io_worksheet ) .
+      lr_autofilter->set_filter_area( is_area = ls_area ).
+
+    CATCH zcx_excel.
+      RETURN.
+  ENDTRY.
+
+ENDMETHOD.
 ENDCLASS.

@@ -303,7 +303,9 @@ METHOD fill_table_content.
 
       " When the cell_value is longer than the structure fild,
       " then it was translated from the key to the description
-      IF length < strlen( cell_value ).
+      IF length < strlen( cell_value )
+      OR cell_value CN '0123456789., '. " Quick fix for issue #2
+
         io_worksheet->set_cell(
           EXPORTING
             ip_column    = column_str  " Cell Column

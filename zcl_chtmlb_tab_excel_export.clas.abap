@@ -19,7 +19,7 @@ protected section.
   data IO_WORKSHEET type ref to ZCL_EXCEL_WORKSHEET .
   data IS_TREE type ABAP_BOOL .
   data TAB_SIZE type I .
-  data IO_STYLE_1 type ref to ZCL_EXCEL_STYLE .  
+  data IO_STYLE_1 type ref to ZCL_EXCEL_STYLE .
   data IO_STYLE_2 type ref to ZCL_EXCEL_STYLE .
   data IO_STYLE_3 type ref to ZCL_EXCEL_STYLE .
 
